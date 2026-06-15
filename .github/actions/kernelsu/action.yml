@@ -1,5 +1,5 @@
 name: Setup SukiSU
-description: Download and configure SukiSU Ultra with Direct SUSFS Hooks Injection
+description: Download and configure SukiSU Ultra with version tracking
 inputs:
   use_latest_commits:
     description: 'Use the latest commit on the branch instead of the pinned commit'
@@ -17,7 +17,6 @@ runs:
 
         SUKISU_BRANCH="main"
 
-        # 1. 執行原有的 SukiSU 官方設定
         if [ "${{ inputs.use_latest_commits }}" = "true" ]; then
           echo "Using latest SukiSU Ultra from branch: $SUKISU_BRANCH"
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s "$SUKISU_BRANCH"
@@ -26,34 +25,42 @@ runs:
           SUKISU_SETUP_COMMIT=$(jq -er '.sukisu.main' "$COMMITS_JSON")
           echo "Using pinned SukiSU commit: $SUKISU_SETUP_COMMIT"
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s "$SUKISU_BRANCH"
-          git -C KernelSU fetch --depth=50 origin "$SUKISU_SETUP_COMMIT"
-          git -C KernelSU checkout "$SUKISU_SETUP_COMMIT"
+          git -C KernelSU/kernel fetch --depth=50 origin "$SUKISU_SETUP_COMMIT"
+          git -C KernelSU/kernel checkout "$SUKISU_SETUP_COMMIT"
         fi
 
-        # 2. 【核心修正】免補丁直接注入技術：強行將 SUSFS 銜接代碼寫入 SukiSU 核心
-        echo "=== [CRITICAL] 開始為 SukiSU 注入 SUSFS 核心掛鉤 ==="
+    # === 以下這步是新加入的，採用絕對路徑，絕對不會干擾上一步的環境 ===
+    - name: Inject SUSFS Hooks into SukiSU
+      shell: bash
+      run: |
+        # 使用絕對路徑定位 allowlist.c，避免 cd 找不到目錄的問題
+        TARGET_FILE="${{ github.workspace }}/kernel/KernelSU/kernel/allowlist.c"
         
-        KSU_ALLOW_FILE="${{ github.workspace }}/kernel/KernelSU/kernel/allowlist.c"
-        
-        if [ -f "$KSU_ALLOW_FILE" ]; then
-          echo "正在修改 allowlist.c 注入 SUSFS 白名單與機制對接..."
+        if [ -f "$TARGET_FILE" ]; then
+          echo "🟢 找到 SukiSU 核心檔案，正在注入 SUSFS 銜接代碼..."
           
-          # 在 allowlist.c 的開頭加入 SUSFS 的聲明
-          # 使用 perl/sed 確保在標頭檔區域塞入 extern 函數聲明
+          # 1. 在標頭檔下方加入 SUSFS 函數聲明
           sed -i '/#include "allowlist.h"/a \
-#ifdef CONFIG_KSU_SUSFS\nextern bool susfs_is_vfs_su_rejected(int type);\n#endif' "$KSU_ALLOW_FILE"
+#ifdef CONFIG_KSU_SUSFS\nextern bool susfs_is_vfs_su_rejected(int type);\n#endif' "$TARGET_FILE"
           
-          # 在 ksu_is_allow_list 函數執行的最開頭，加入 SUSFS 的阻斷檢查
-          # 這樣當 SUSFS 想要隱藏 KSU 時，SukiSU 就會乖乖配合阻斷，達成完美隱藏
+          # 2. 在 ksu_is_allow_list 函數最開頭注入阻斷 Hook
           sed -i '/bool ksu_is_allow_list(int type)/{
             n
             a \    #ifdef CONFIG_KSU_SUSFS\n    if (susfs_is_vfs_su_rejected(type)) {\n        return false;\n    }\n    #endif
-          }' "$KSU_ALLOW_FILE"
+          }' "$TARGET_FILE"
           
-          echo "🟢 成功完成 SukiSU 端的 SUSFS 核心代碼注入！"
+          echo "🟢 SUSFS Hooks 注入成功！"
         else
-          echo "❌ 錯誤：找不到 allowlist.c，請檢查 SukiSU 倉庫目錄結構是否有變動！"
-          exit 1
+          echo "⚠️ 警告：在此路徑未找到 allowlist.c，嘗試次要路徑..."
+          ALT_FILE="${{ github.workspace }}/kernel/KernelSU/allowlist.c"
+          if [ -f "$ALT_FILE" ]; then
+            sed -i '/#include "allowlist.h"/a \#ifdef CONFIG_KSU_SUSFS\nextern bool susfs_is_vfs_su_rejected(int type);\n#endif' "$ALT_FILE"
+            sed -i '/bool ksu_is_allow_list(int type)/{ n; a \    #ifdef CONFIG_KSU_SUSFS\n    if (susfs_is_vfs_su_rejected(type)) {\n        return false;\n    }\n    #endif\n' "$ALT_FILE"
+            echo "🟢 次要路徑 SUSFS Hooks 注入成功！"
+          else
+            echo "❌ 嚴重錯誤：找不到 SukiSU 的 allowlist.c，請檢查該項目的源碼結構！"
+            exit 1
+          fi
         fi
 
     - name: Extract KSU Version Info
