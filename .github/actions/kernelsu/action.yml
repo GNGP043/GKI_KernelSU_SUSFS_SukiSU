@@ -29,11 +29,10 @@ runs:
           git -C KernelSU/kernel checkout "$SUKISU_SETUP_COMMIT"
         fi
 
-    # === 以下這步是新加入的，採用絕對路徑，絕對不會干擾上一步的環境 ===
+    # === 這是唯一新增的 Step，用絕對路徑在背景幫你補上 SUSFS 阻斷代碼 ===
     - name: Inject SUSFS Hooks into SukiSU
       shell: bash
       run: |
-        # 使用絕對路徑定位 allowlist.c，避免 cd 找不到目錄的問題
         TARGET_FILE="${{ github.workspace }}/kernel/KernelSU/kernel/allowlist.c"
         
         if [ -f "$TARGET_FILE" ]; then
@@ -58,7 +57,7 @@ runs:
             sed -i '/bool ksu_is_allow_list(int type)/{ n; a \    #ifdef CONFIG_KSU_SUSFS\n    if (susfs_is_vfs_su_rejected(type)) {\n        return false;\n    }\n    #endif\n' "$ALT_FILE"
             echo "🟢 次要路徑 SUSFS Hooks 注入成功！"
           else
-            echo "❌ 嚴重錯誤：找不到 SukiSU 的 allowlist.c，請檢查該項目的源碼結構！"
+            echo "❌ 嚴重錯誤：找不到 SukiSU 的 allowlist.c！"
             exit 1
           fi
         fi
