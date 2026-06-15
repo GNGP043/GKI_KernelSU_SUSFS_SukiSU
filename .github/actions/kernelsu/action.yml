@@ -1,5 +1,5 @@
 name: Setup SukiSU
-description: Download and configure SukiSU Ultra and force inject SUSFS support
+description: Download and configure SukiSU Ultra with Direct SUSFS Hooks Injection
 inputs:
   use_latest_commits:
     description: 'Use the latest commit on the branch instead of the pinned commit'
@@ -30,29 +30,30 @@ runs:
           git -C KernelSU checkout "$SUKISU_SETUP_COMMIT"
         fi
 
-        # 2. 核心修正：強制注入 SUSFS 對應 KSU 的補丁
-        echo "=== [CRITICAL] 開始為 SukiSU 注入 SUSFS 銜接補丁 ==="
+        # 2. 【核心修正】免補丁直接注入技術：強行將 SUSFS 銜接代碼寫入 SukiSU 核心
+        echo "=== [CRITICAL] 開始為 SukiSU 注入 SUSFS 核心掛鉤 ==="
         
-        # 進入剛剛下載好的 KernelSU 目錄
-        cd KernelSU
-
-        # 從專門為 KSU 提供 SUSFS 支持的開源倉庫下載補丁 (這裡使用 6.1 內核通用的 KSU SUSFS 補丁)
-        # 該補丁會在 KSU 的核心文件中加入對 susfs_is_vfs_su_rejected 等函數的調用
-        curl -LSs https://raw.githubusercontent.com/Gany666/susfs4ksu/main/kernel_patches/50_add_susfs_in_gki-6.1.patch -o ksu_susfs.patch
+        KSU_ALLOW_FILE="${{ github.workspace }}/kernel/KernelSU/kernel/allowlist.c"
         
-        # 執行打補丁。因為 SukiSU 結構完全基於 KSU，因此代碼位置是一模一樣的
-        if patch -p1 < ksu_susfs.patch; then
-          echo "🟢 SukiSU 成功與 SUSFS 補丁對接！"
+        if [ -f "$KSU_ALLOW_FILE" ]; then
+          echo "正在修改 allowlist.c 注入 SUSFS 白名單與機制對接..."
+          
+          # 在 allowlist.c 的開頭加入 SUSFS 的聲明
+          # 使用 perl/sed 確保在標頭檔區域塞入 extern 函數聲明
+          sed -i '/#include "allowlist.h"/a \
+#ifdef CONFIG_KSU_SUSFS\nextern bool susfs_is_vfs_su_rejected(int type);\n#endif' "$KSU_ALLOW_FILE"
+          
+          # 在 ksu_is_allow_list 函數執行的最開頭，加入 SUSFS 的阻斷檢查
+          # 這樣當 SUSFS 想要隱藏 KSU 時，SukiSU 就會乖乖配合阻斷，達成完美隱藏
+          sed -i '/bool ksu_is_allow_list(int type)/{
+            n
+            a \    #ifdef CONFIG_KSU_SUSFS\n    if (susfs_is_vfs_su_rejected(type)) {\n        return false;\n    }\n    #endif
+          }' "$KSU_ALLOW_FILE"
+          
+          echo "🟢 成功完成 SukiSU 端的 SUSFS 核心代碼注入！"
         else
-          echo "🟡 標準補丁失敗，嘗試 alternative 補丁..."
-          # 如果上一個補丁因為 SukiSU 特有代碼衝突，則嘗試通用型核心 Hook 補丁
-          curl -LSs https://raw.githubusercontent.com/rifsxd/KernelSU-Next/next/kernel/KernelSU/ksu.patch -o ksu_alt.patch
-          if patch -p1 < ksu_alt.patch; then
-            echo "🟢 替代補丁成功嵌入！"
-          else
-            echo "❌ 警告：KSU 端的 SUSFS 補丁注入失敗，可能需要確認 SukiSU 目前的代碼結構。"
-            exit 1
-          fi
+          echo "❌ 錯誤：找不到 allowlist.c，請檢查 SukiSU 倉庫目錄結構是否有變動！"
+          exit 1
         fi
 
     - name: Extract KSU Version Info
