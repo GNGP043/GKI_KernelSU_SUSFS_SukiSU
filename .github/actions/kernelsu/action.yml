@@ -61,3 +61,4 @@ runs:
         config_list: |
           CONFIG_KSU=y
           CONFIG_KPM=y
+          CONFIG_KSU_SUSFS_SUS_SU=n
