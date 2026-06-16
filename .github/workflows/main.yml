@@ -228,32 +228,35 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v5
 
-    - name: Extract KernelSU Version Info
-      id: ksu_version
+    - name: Extract SukiSU Version Info
+      id: sukisu_version
       env:
         COMMITS_JSON_PATH: ${{ env.COMMITS_JSON }}
       run: |
         set -euo pipefail
 
-        KSUN_BRANCH="dev"
+        # 1. 將分支改為 SukiSU 的主分支 main
+        SUKISU_BRANCH="main"
 
         if [ "${{ inputs.use_latest_commits }}" = "true" ]; then
-          echo "Cloning KernelSU-Next from full branch tip: $KSUN_BRANCH"
-          git clone --branch "$KSUN_BRANCH" https://github.com/KernelSU-Next/KernelSU-Next.git /tmp/kernelsu-next
+          echo "Cloning SukiSU-Ultra from full branch tip: $SUKISU_BRANCH"
+          # 2. 修改倉庫連結為 SukiSU-Ultra
+          git clone --branch "$SUKISU_BRANCH" https://github.com/SukiSU-Ultra/SukiSU-Ultra.git /tmp/sukisu
         else
-          echo "Cloning KernelSU-Next from branch: $KSUN_BRANCH"
-          git clone --depth=1 --branch "$KSUN_BRANCH" https://github.com/KernelSU-Next/KernelSU-Next.git /tmp/kernelsu-next
+          echo "Cloning SukiSU-Ultra from branch: $SUKISU_BRANCH"
+          git clone --depth=1 --branch "$SUKISU_BRANCH" https://github.com/SukiSU-Ultra/SukiSU-Ultra.git /tmp/sukisu
         fi
 
-        cd /tmp/kernelsu-next
+        cd /tmp/sukisu
 
         if [ "${{ inputs.use_latest_commits }}" = "true" ]; then
-          KSUN_COMMIT=$(git rev-parse HEAD)
+          SUKISU_COMMIT=$(git rev-parse HEAD)
         else
-          KSUN_COMMIT=$(jq -er '.kernelsu.dev' "$COMMITS_JSON_PATH")
-          echo "Checking out commit: $KSUN_COMMIT"
-          git fetch --depth=50 origin "$KSUN_COMMIT"
-          git checkout "$KSUN_COMMIT"
+          # 3. 讀取 JSON 內對應 sukisu 的 pinned commit (假設你的 JSON 鍵名為 .sukisu.main)
+          SUKISU_COMMIT=$(jq -er '.sukisu.main' "$COMMITS_JSON_PATH")
+          echo "Checking out commit: $SUKISU_COMMIT"
+          git fetch --depth=50 origin "$SUKISU_COMMIT"
+          git checkout "$SUKISU_COMMIT"
         fi
 
         COMMITS_COUNT=$(git rev-list --count HEAD)
@@ -262,20 +265,22 @@ jobs:
 
         KSU_GIT_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "no-tag")
 
-        MANAGER_RUN_ID=$(curl -fsSL "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/actions/workflows/build-manager-ci.yml/runs?head_sha=${KSUN_COMMIT}" | jq -r '.workflow_runs[0].id // empty')
+        # 4. 修改為 SukiSU 的管理器 CI 工作流名稱 (通常為 build-manager.yml)
+        MANAGER_RUN_ID=$(curl -fsSL "https://api.github.com/repos/SukiSU-Ultra/SukiSU-Ultra/actions/workflows/build-manager.yml/runs?head_sha=${SUKISU_COMMIT}" | jq -r '.workflow_runs[0].id // empty')
         if [[ -n "${MANAGER_RUN_ID:-}" ]]; then
-          KSU_MANAGER="https://github.com/KernelSU-Next/KernelSU-Next/actions/runs/${MANAGER_RUN_ID}"
+          KSU_MANAGER="https://github.com/SukiSU-Ultra/SukiSU-Ultra/actions/runs/${MANAGER_RUN_ID}"
         else
-          KSU_MANAGER="https://github.com/KernelSU-Next/KernelSU-Next/actions/workflows/build-manager-ci.yml"
+          KSU_MANAGER="https://github.com/SukiSU-Ultra/SukiSU-Ultra/actions/workflows/build-manager.yml"
         fi
 
         echo "Commits count: $COMMITS_COUNT"
-        echo "KSU Version: $KSU_VERSION"
-        echo "KSU Git Tag: $KSU_GIT_TAG"
-        echo "KSU Manager: $KSU_MANAGER"
+        echo "SukiSU Version: $KSU_VERSION"
+        echo "SukiSU Git Tag: $KSU_GIT_TAG"
+        echo "SukiSU Manager: $KSU_MANAGER"
 
-        echo "KSUN_BRANCH=$KSUN_BRANCH" >> $GITHUB_ENV
-        echo "KSUN_COMMIT=$KSUN_COMMIT" >> $GITHUB_ENV
+        # 5. 輸出環境變數 (保持變數名稱與你後面步驟使用的名稱一致，若後面有用到 KSUN_ 開頭可不改，這裡我統一換成 SUKISU 方便識別)
+        echo "KSUN_BRANCH=$SUKISU_BRANCH" >> $GITHUB_ENV
+        echo "KSUN_COMMIT=$SUKISU_COMMIT" >> $GITHUB_ENV
         echo "KSU_COMMITS_COUNT=$COMMITS_COUNT" >> $GITHUB_ENV
         echo "KSU_VERSION=$KSU_VERSION" >> $GITHUB_ENV
         echo "KSU_GIT_TAG=$KSU_GIT_TAG" >> $GITHUB_ENV
