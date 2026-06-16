@@ -147,13 +147,58 @@ jobs:
         os_patch_level: ${{ inputs.os_patch_level }}
         sublevel: ${{ steps.extract.outputs.sublevel }}
 
-    - name: Fix SukiSU
+    - name: Fix SukiSU and task_mmu.c
       shell: bash
       working-directory: ${{ github.workspace }}/kernel/common
       run: |
         set -euo pipefail
         cp ${{ github.workspace }}/.github/actions/kernelsu/patches/69_hide_stuff.patch "${{ github.workspace }}/kernel/common/69_hide_stuff.patch"
         patch -p1 -F3 < 69_hide_stuff.patch
+
+
+        TASK_MMU="fs/proc/task_mmu.c"
+        BASE_C="fs/proc/base.c"
+    
+        if [ ! -f "$TASK_MMU" ]; then
+          exit 0
+        fi
+    
+        FB="${{inputs.android_version}}-${{inputs.kernel_version}}"
+    
+        fix_base_c_header() {
+          if [ ! -f "$BASE_C" ]; then
+            return
+          fi
+    
+          if ! grep -q "linux/dma-buf.h" "$BASE_C"; then
+            sed -i '/linux\/cpufreq_times.h/a #include <linux/dma-buf.h>' "$BASE_C"
+          fi
+        }
+    
+        if [ "$FB" = "android15-6.6" ]; then
+          if ! grep -q "unsigned int nr_subpages" "$TASK_MMU"; then
+            fix_base_c_header
+          fi
+    
+        elif [ "$FB" = "android14-6.1" ]; then
+          if ! grep -q "if (!vma_pages(vma))" "$TASK_MMU"; then
+            fix_base_c_header
+    
+            if grep -q "goto show_pad;" "$TASK_MMU"; then
+              sed -i 's/goto show_pad;/return 0;/g' "$TASK_MMU"
+            fi
+          fi
+    
+        elif [ "$FB" = "android12-5.10" ] || \
+             [ "$FB" = "android13-5.10" ] || \
+             [ "$FB" = "android13-5.15" ]; then
+    
+          if ! grep -q "if (!vma_pages(vma))" "$TASK_MMU"; then
+            if grep -q "goto show_pad;" "$TASK_MMU"; then
+              sed -i 's/goto show_pad;/return 0;/g' "$TASK_MMU"
+            fi
+          fi
+        fi
 
     - name: Baseband Guard
       if: (contains(inputs.feature_set, 'BBG') || inputs.feature_set == 'FULL')
