@@ -15,7 +15,7 @@ runs:
       run: |
         set -euo pipefail
 
-        SUKISU_BRANCH="built-in"
+        SUKISU_BRANCH="builtin"
 
         if [ "${{ inputs.use_latest_commits }}" = "true" ]; then
           echo "Using latest SukiSU Ultra from branch: $SUKISU_BRANCH"
@@ -46,6 +46,14 @@ runs:
         echo "SukiSU commit: $KSU_COMMIT"
         echo "SukiSU tag: $KSU_GIT_TAG"
         echo "SukiSU commit count: $KSU_GIT_VERSION"
+
+    - name: 'Fix SukiSU'
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel/common
+      run: |
+        set -euo pipefail
+        cp ${{ github.action_path }}/patches/69_hide_stuff.patch "${{ github.workspace }}/kernel/common/69_hide_stuff.patch"
+        patch -p1 -F 3 < 69_hide_stuff.patch
 
     - name: Enable Kernel Configs
       uses: ./.github/actions/set-kernel-config
