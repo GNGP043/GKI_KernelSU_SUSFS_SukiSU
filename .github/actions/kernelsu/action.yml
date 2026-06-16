@@ -15,7 +15,7 @@ runs:
       run: |
         set -euo pipefail
 
-        SUKISU_BRANCH="main"
+        SUKISU_BRANCH="built-in"
 
         if [ "${{ inputs.use_latest_commits }}" = "true" ]; then
           echo "Using latest SukiSU Ultra from branch: $SUKISU_BRANCH"
@@ -27,39 +27,6 @@ runs:
           curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s "$SUKISU_BRANCH"
           git -C KernelSU/kernel fetch --depth=50 origin "$SUKISU_SETUP_COMMIT"
           git -C KernelSU/kernel checkout "$SUKISU_SETUP_COMMIT"
-        fi
-
-    # === 這是唯一新增的 Step，用絕對路徑在背景幫你補上 SUSFS 阻斷代碼 ===
-    - name: Inject SUSFS Hooks into SukiSU
-      shell: bash
-      run: |
-        TARGET_FILE="${{ github.workspace }}/kernel/KernelSU/kernel/allowlist.c"
-        
-        if [ -f "$TARGET_FILE" ]; then
-          echo "🟢 找到 SukiSU 核心檔案，正在注入 SUSFS 銜接代碼..."
-          
-          # 1. 在標頭檔下方加入 SUSFS 函數聲明
-          sed -i '/#include "allowlist.h"/a \
-#ifdef CONFIG_KSU_SUSFS\nextern bool susfs_is_vfs_su_rejected(int type);\n#endif' "$TARGET_FILE"
-          
-          # 2. 在 ksu_is_allow_list 函數最開頭注入阻斷 Hook
-          sed -i '/bool ksu_is_allow_list(int type)/{
-            n
-            a \    #ifdef CONFIG_KSU_SUSFS\n    if (susfs_is_vfs_su_rejected(type)) {\n        return false;\n    }\n    #endif
-          }' "$TARGET_FILE"
-          
-          echo "🟢 SUSFS Hooks 注入成功！"
-        else
-          echo "⚠️ 警告：在此路徑未找到 allowlist.c，嘗試次要路徑..."
-          ALT_FILE="${{ github.workspace }}/kernel/KernelSU/allowlist.c"
-          if [ -f "$ALT_FILE" ]; then
-            sed -i '/#include "allowlist.h"/a \#ifdef CONFIG_KSU_SUSFS\nextern bool susfs_is_vfs_su_rejected(int type);\n#endif' "$ALT_FILE"
-            sed -i '/bool ksu_is_allow_list(int type)/{ n; a \    #ifdef CONFIG_KSU_SUSFS\n    if (susfs_is_vfs_su_rejected(type)) {\n        return false;\n    }\n    #endif\n' "$ALT_FILE"
-            echo "🟢 次要路徑 SUSFS Hooks 注入成功！"
-          else
-            echo "❌ 嚴重錯誤：找不到 SukiSU 的 allowlist.c！"
-            exit 1
-          fi
         fi
 
     - name: Extract KSU Version Info
@@ -85,6 +52,4 @@ runs:
       with:
         config_list: |
           CONFIG_KSU=y
-          CONFIG_SUKISU=y
           CONFIG_KPM=y
-          CONFIG_KSU_SUSFS=y
