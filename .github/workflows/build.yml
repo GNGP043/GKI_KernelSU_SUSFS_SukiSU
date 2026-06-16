@@ -152,7 +152,7 @@ jobs:
       working-directory: ${{ github.workspace }}/kernel/common
       run: |
         set -euo pipefail
-        cp ./.github/actions/kernelsu/patches/69_hide_stuff.patch "${{ github.workspace }}/kernel/common/69_hide_stuff.patch"
+        cp ${{ github.workspace }}/.github/actions/kernelsu/patches/69_hide_stuff.patch "${{ github.workspace }}/kernel/common/69_hide_stuff.patch"
         patch -p1 -F3 < 69_hide_stuff.patch
 
     - name: Baseband Guard
