@@ -147,6 +147,14 @@ jobs:
         os_patch_level: ${{ inputs.os_patch_level }}
         sublevel: ${{ steps.extract.outputs.sublevel }}
 
+    - name: 'Fix SukiSU'
+      shell: bash
+      working-directory: ${{ github.workspace }}/kernel/common
+      run: |
+        set -euo pipefail
+        cp ${{ github.action_path }}/patches/69_hide_stuff.patch "${{ github.workspace }}/kernel/common/69_hide_stuff.patch"
+        patch -p1 -F3 < 69_hide_stuff.patch
+
     - name: Baseband Guard
       if: (contains(inputs.feature_set, 'BBG') || inputs.feature_set == 'FULL')
       uses: ./.github/actions/bbg
