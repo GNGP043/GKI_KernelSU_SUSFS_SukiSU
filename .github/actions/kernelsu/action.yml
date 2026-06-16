@@ -15,7 +15,7 @@ runs:
       run: |
         set -euo pipefail
 
-        SUKISU_BRANCH="builtin"
+        SUKISU_BRANCH="main"
 
         if [ "${{ inputs.use_latest_commits }}" = "true" ]; then
           echo "Using latest SukiSU Ultra from branch: $SUKISU_BRANCH"
