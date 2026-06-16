@@ -30,7 +30,7 @@ runs:
         set -euo pipefail
 
         SUSFS_BRANCH="gki-${{ inputs.version }}"
-        SUSFS_REPO="https://gitlab.com/simonpunk/susfs4ksu.git"        
+        SUSFS_REPO="https://github.com/ShirkNeko/susfs4ksu.git"        
 
         echo "Preparing SUSFS for branch: $SUSFS_BRANCH"
         echo "Cloning latest from $SUSFS_BRANCH..."
